@@ -36,10 +36,10 @@ we will have PCC 0.370 and PCC 0.414 for EGN and EGGN respectively.
 
 class TxPDataset(Dataset):
     def __init__(self, breast_cancers,index_filter, transform, args, train = None):
-        self.breast_cancers = breast_cancers
-        self.args = args
-        self.train = train
-        self.index_filter = index_filter
+        self.breast_cancers = breast_cancers #list of breast cancer data (array([0, 1, 2, 4]))
+        self.args = args #arg(size=256, numk=6, mdim='512', index_path='exemplar/0/index', emb_path='exemplar', data='//10xgenomics')
+        self.train = train #bool (true)
+        self.index_filter = index_filter #None
         self.data = self.load_raw(args.data)
         self.meta_info(args.data)
         self.transform = transform
@@ -59,7 +59,6 @@ class TxPDataset(Dataset):
         
          
     def load_raw(self, data_root):
-        
         
         data = []
         for idx, file in enumerate(Breast_Cancer):
@@ -108,7 +107,6 @@ class TxPDataset(Dataset):
             emb = torch.load(f"{self.args.emb_path}/{idx}.pt",map_location=torch.device("cpu"))
 
             assert emb.size(0) == c.shape[0]
-            
             all_data[idx] = [img,c,coord.values.astype(int),emb, index]
             
             for i in c:
@@ -142,7 +140,7 @@ class TxPDataset(Dataset):
             op_count = torch.log10(op_count[self.gene_filter] + 1)
             op_count = (op_count - self.min) / (self.max - self.min + 1e-8)
             op_counts.append(op_count)
-    
+
         return torch.stack(op_emb).view(numk,-1), torch.stack(op_counts).view(numk,250)    
         
     def generate(self, idx):

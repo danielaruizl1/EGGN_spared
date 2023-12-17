@@ -58,7 +58,8 @@ for file in Breast_Cancer:
     coord = pd.DataFrame(h5.obsm['spatial'], columns=['x_coord', 'y_coord'], index=h5.obs_names)
     data.append([img,coord.values.astype(int)])
     print(coord.values.astype(int).shape)
-    
+
+
 mapping = []
 for i,(img,coord) in enumerate(data):
     mappings = []
@@ -66,7 +67,6 @@ for i,(img,coord) in enumerate(data):
         mappings.append(j)
     mapping.append(mappings)
 
-            
 def generate():
                     
     def get_slide_gene(idx,):
@@ -129,7 +129,7 @@ def create_search_index():
     
         def __repr__(self):
             return str(self.list)
-
+    
     for i, _ in tqdm(enumerate(mapping)):
         p = f"{save_dir}/{i}.pt"
         p = torch.load(p).cuda()
@@ -156,8 +156,8 @@ def create_search_index():
             Q = Parallel(n_jobs=num_cores)(delayed(add)(q_values[f],q_infos[f],Q[f]) for f in range(q_values.shape[0]))
         np.save(f"{save_dir}/{args.fold}/{index_dir}/{i}.npy", [myq.list for myq in Q] )
     
-if args.fold==0:
-    generate()
+#if args.fold==0:
+    #generate()
 create_search_index()
         
         

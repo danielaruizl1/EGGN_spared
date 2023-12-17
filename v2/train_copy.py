@@ -5,9 +5,14 @@ import datetime
 import pytorch_lightning as pl
 import os
 import numpy as np
+import pandas as pd
 import sys
+import json
+import wandb
 sys.path.insert(0, "../")
 from v1.train import pearsonr, compute_correlations
+sys.path.insert(0, '/media/SSD3/daruizl/ST')
+from metrics import get_metrics
  
 class TrainerModel(pl.LightningModule):
     
@@ -19,10 +24,17 @@ class TrainerModel(pl.LightningModule):
         self.automatic_optimization = False
         self.min_loss  = float("inf")
         self.max_corr  = float("-inf")
-        self.max_eval_corr = float("-inf")
         self.min_eval_loss = float("inf")
+        if self.config.opt_metric == "MSE" or self.config.opt_metric == "MAE":
+            self.eval_opt_metric = float("inf")  
+        else:
+            self.eval_opt_metric = float("-inf")
         self.start_time  = None
         self.last_saved = None
+        self.metrics_train = pd.DataFrame()
+        self.metrics_val = pd.DataFrame()
+        self.metrics_test = pd.DataFrame()
+        self.best_metrics = None
         
     @property
     def num_training_steps(self) -> int:
@@ -43,11 +55,18 @@ class TrainerModel(pl.LightningModule):
             self.start_time  = time.time()
         
         optimizer = self.optimizers()
-        
         pred_count = self.model(data.x_dict,data.edge_index_dict)
         loss   = self.criterion(pred_count,data["window"]["y"])
         corrloss = self.correlationMetric(pred_count,data["window"]["y"])
-        
+        mask = data["window"]["mask"]
+        metrics = get_metrics(data["window"]["y"],pred_count,mask)
+        metrics_df = pd.DataFrame(metrics, index=[0])
+        train_dict={f'train_{key}': val for key, val in metrics.items()}
+        train_dict["epoch"]=self.current_epoch
+        wandb.log(train_dict)
+        self.metrics_train = pd.concat([self.metrics_train,metrics_df], ignore_index=True)
+        self.metrics_train.to_csv(f"results_st/metrics_train{self.config.dataset}.csv", index=True)
+
         optimizer.zero_grad()
         self.manual_backward(loss + corrloss * 0.5)
         optimizer.step()
@@ -88,48 +107,86 @@ class TrainerModel(pl.LightningModule):
                         )
             
     def validation_step(self,data,idx):
+        mask = data["window"]["mask"]
         pred_count = self.model(data.x_dict,data.edge_index_dict)
+        return pred_count,data["window"]["y"],mask
+    
+    def test_step(self,data,idx):
+        mask = data["window"]["mask"]
+        pred_count = self.model(data.x_dict,data.edge_index_dict)
+        metrics = get_metrics(data["window"]["y"],pred_count, mask)
+        metrics_df = pd.DataFrame(metrics, index=[0])
+        test_dict={f'test_{key}': val for key, val in metrics.items()}
+        test_dict["epoch"]=self.current_epoch
+        wandb.log(test_dict)
+        self.metrics_test = pd.concat([self.metrics_test,metrics_df], ignore_index=True)
+        self.metrics_test.to_csv(f"results_st/metrics_test{self.config.dataset}.csv", index=True)
         return pred_count,data["window"]["y"]
         
     def validation_epoch_end(self,outputs):
         
-        breakpoint()
         logfun = self.config.logfun
         
         pred_count = torch.cat([i[0] for i in outputs])
         count = torch.cat([i[1] for i in outputs])
-        pred_count = self.all_gather(pred_count).view(-1,250)
-        count = self.all_gather(count).view(-1,250)
+        mask = torch.cat([i[2] for i in outputs])
+        pred_count = self.all_gather(pred_count).view(-1,256)
+        count = self.all_gather(count).view(-1,256)
+        mask = self.all_gather(mask).view(-1,256)
+
+        metrics = get_metrics(count,pred_count,mask)
+        val_dict={f'val_{key}': val for key, val in metrics.items()}
+        val_dict["epoch"]=self.current_epoch
+        wandb.log(val_dict)
+        metrics_df = pd.DataFrame(metrics, index=[0])
+        self.metrics_val = pd.concat([self.metrics_val,metrics_df], ignore_index=True)
+        self.metrics_val.to_csv(f"results_st/metrics_val{self.config.dataset}.csv", index=True)
         
         total_loss = self.criterion(pred_count,count).item()
+        self.log('val_loss', total_loss)
         gene_corr = compute_correlations(count, pred_count, True)
         corr = np.mean(gene_corr)
         
-        
         if self.trainer.is_global_zero and self.trainer.num_gpus != 0:
-            if corr > self.max_eval_corr:
-                 self.save(self.current_epoch, total_loss,corr)                    
-            self.max_eval_corr = max(self.max_eval_corr,corr)
-            self.min_eval_loss = min(self.min_eval_loss, total_loss)
-                            
+            if self.config.opt_metric == "MSE" or self.config.opt_metric == "MAE":
+                if metrics[self.config.opt_metric] < self.eval_opt_metric:
+                    self.best_metrics = metrics
+                    self.save(self.current_epoch, total_loss, metrics[self.config.opt_metric])
+                    bestval_dict={f'best_val_{key}': val for key, val in self.best_metrics.items()}
+                    bestval_dict["epoch"]=self.current_epoch
+                    wandb.log(bestval_dict)
+                self.min_eval_loss = min(self.min_eval_loss, total_loss)
+                self.eval_opt_metric = min(metrics[self.config.opt_metric], self.eval_opt_metric)   
+            else:
+                if metrics[self.config.opt_metric] > self.eval_opt_metric:
+                    self.best_metrics = metrics
+                    self.save(self.current_epoch, total_loss, metrics[self.config.opt_metric])
+                    bestval_dict={f'best_val_{key}': val for key, val in self.best_metrics.items()}
+                    bestval_dict["epoch"]=self.current_epoch
+                    wandb.log(bestval_dict)  
+                self.min_eval_loss = min(self.min_eval_loss, total_loss)
+                self.eval_opt_metric = max(metrics[self.config.opt_metric], self.eval_opt_metric)                
+                                        
             logfun("==" * 25)
             logfun(
-                "[Corr :%f, Loss: %f] [Min Loss :%f, Max Corr: %f]" %
-                (corr,
+                f"[{self.config.opt_metric} :%f, Loss: %f] [Min Loss :%f, Max {self.config.opt_metric}: %f]" %
+                (metrics[self.config.opt_metric],
                  total_loss,
                  self.min_eval_loss,
-                 self.max_eval_corr,
+                 self.eval_opt_metric,
                  )
                 )            
             logfun("==" * 25)
         
-    def save(self, epoch,loss, acc):
+    def save(self, epoch, loss, acc):
         
         self.config.logfun(self.last_saved)
-        output_path = os.path.join(self.config.store_dir, "best.pt") 
+        output_path = os.path.join(self.config.store_dir, f"best{self.config.dataset}.pt") 
         self.last_saved = output_path
         torch.save(self.model.state_dict(), output_path)
         self.config.logfun("EP:%d Model Saved on:" % epoch, output_path)
+        with open(f"results_st/0/best_metrics{self.config.dataset}.json", 'w') as json_file:
+            json.dump(self.best_metrics, json_file)
         return output_path
                       
     def configure_optimizers(self):

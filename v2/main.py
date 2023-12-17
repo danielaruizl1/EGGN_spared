@@ -15,6 +15,7 @@ import sys
 sys.path.insert(0, "../")
 from v1.main import KFOLD
 
+
 def load_dataset(pts,args):
     all_files = glob.glob(f"{args.graph_path}/{args.fold}/graphs_{args.numk}/*.pt")
     
@@ -27,7 +28,7 @@ def load_dataset(pts,args):
                 selected_files.append(graph)
     return selected_files
 
-def main(args):
+def main(args): 
 
     cwd = os.getcwd()
     
@@ -44,7 +45,6 @@ def main(args):
     
     print(args)
     
-
     train_patient, test_patient = KFOLD[args.fold]
     
     train_dataset = load_dataset(train_patient,args)
@@ -60,7 +60,7 @@ def main(args):
         test_dataset,
         batch_size=1,
         )
-    
+        
     model = HeteroGNN(args.num_layers,args.mdim)
     CONFIG = collections.namedtuple('CONFIG', ['lr', 'logfun', 'verbose_step', 'weight_decay', 'store_dir'])
     config = CONFIG(args.lr, print, args.verbose_step, args.weight_decay,store_dir)

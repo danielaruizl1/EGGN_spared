@@ -24,8 +24,7 @@ args = parser.parse_args()
 
 def get_edge(x):
 
-     edge_index = torch_geometric.nn.radius_graph(
-            x,
+    edge_index = torch_geometric.nn.radius_graph(x,
             np.sqrt(2),
             None,
             False,
@@ -33,8 +32,8 @@ def get_edge(x):
             flow="source_to_target",
             num_workers=1,
         )
-     
-     return edge_index
+    
+    return edge_index
 
 
 def get_cross_edge(x):
@@ -56,7 +55,6 @@ def get_cross_edge(x):
     edge = torch.stack((source,inverse))
     return unique_op, unique_opy, edge
 
-
 for fold in [0,1,2]:    
     savename = args.savename + "/" + str(fold)
     os.makedirs(savename,exist_ok=True)
@@ -64,7 +62,6 @@ for fold in [0,1,2]:
     temp_arg = namedtuple("arg",["size","numk","mdim", "index_path", "emb_path", "data"])
     temp_arg = temp_arg(args.size, args.numk,args.mdim, args.emb_path + f"/{fold}/" + args.index_path, args.emb_path, args.data) 
     train_dataset = TxPDataset(KFOLD[fold][0] , None, None, temp_arg, train = True)
-    
     
     temp_arg = namedtuple("arg",["size","numk","mdim", "index_path", "emb_path", "data"])
     temp_arg = temp_arg(args.size, args.numk,args.mdim, args.emb_path + f"/{fold}/" + args.index_path, args.emb_path, args.data)
@@ -77,21 +74,22 @@ for fold in [0,1,2]:
         dataset.min = train_dataset.min.clone()
         dataset.max = train_dataset.max.clone()
         
-        loader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=1
-        )
+        loader = torch.utils.data.DataLoader(dataset, batch_size=1)
         img_data = []
         for x in loader:
-            pos, p, py, op, opy = x["pos"], x["p_feature"], x["count"], x["op_feature"], x["op_count"]
+            pos = x["pos"] #Patch position torch.Size([1, 2])
+            p = x["p_feature"] #Patch embedding torch.Size([1, 1, 512])
+            py = x["count"] #Gene expression torch.Size([1, 250])
+            op = x["op_feature"] #K nearest patch embedding torch.Size([1, 6, 512])
+            opy = x["op_count"] #K nearest gene expression torch.Size([1, 6, 250])
             img_data.append([pos, p, py, op, opy])
-        
+
+        breakpoint()
         window_edge = get_edge(torch.cat(([i[0] for i in img_data])).clone())
-        
+      
         unique_op, unique_opy, cross_edge = get_cross_edge(img_data)
         
         print(window_edge.size(), unique_op.size(), unique_opy.size(), cross_edge.size())
-        
         
         data = torch_geometric.data.HeteroData()
         
