@@ -1,38 +1,30 @@
 import json
 import subprocess
 import argparse
+import os
 
-def run_egn(code):
-    if code=="exemplars" or code=="graphs":
+def run_egn():
+    
+    # Get parsed the path of the config file
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--dataset', required=True, type=str, help='Dataset name to find the config file')
+    args = parser.parse_args()
 
-        # Get parsed the path of the config file
-        parser = argparse.ArgumentParser()
-        parser.add_argument('--dataset_config', type=str, default='config_visium.json',    help='Path to the .json file with the configs for stnet.')
-        args = parser.parse_args()
+    current_dir = os.path.dirname(__file__)
 
-        # Read the configs
-        with open(args.dataset_config, 'rb') as f:
-            config_params = json.load(f)
+    commands = [
+        ['python', os.path.join(current_dir,'build_exemplar_sepal.py')],
+        ['python', os.path.join(current_dir,'generate_graph_sepal.py')],
+        ['python', os.path.join(current_dir,'main_sepal.py')]
+    ]
 
-        # Create the command to run. If sota key is "None" call main.py else call main_sota.py
-        if code=="exemplars":
-            command_list = ['python', 'build_exemplar_copy.py']
-        elif code=="graphs":
-            command_list = ['python', 'generate_graph_copy.py']
+    for i in range(len(commands)):
+        commands[i].append('--dataset')
+        commands[i].append(f'{args.dataset}')
 
-    elif code=="train":
+    # Call each subprocess
+    for command_list in commands:
+        subprocess.call(command_list)
 
-        with open('train_configEGN.json', 'rb') as f:
-            config_params = json.load(f)
-
-        # Create the command to run. If sota key is "None" call main.py else call main_sota.py
-        command_list = ['python', 'main_copy.py']
-
-    for key, val in config_params.items():
-        command_list.append(f'--{key}')
-        command_list.append(f'{val}')
-
-    # Call subprocess
-    subprocess.call(command_list)
-
-run_egn("graphs")
+if __name__ == '__main__':
+    run_egn()

@@ -17,6 +17,8 @@ class HeteroGNN(torch.nn.Module):
         hidden_channels = mdim
         out_channels = num_genes
         input_channel = mdim
+
+        self.num_genes = num_genes
         
         self.pretransform_win = pyg.Linear(input_channel,hidden_channels,bias=False)
         self.pretransform_exp = pyg.Linear(input_channel+num_genes,hidden_channels,bias=False)
@@ -43,7 +45,7 @@ class HeteroGNN(torch.nn.Module):
         
         x_dict["example"]  = self.post_transform(self.pretransform_exp(x_dict["example"]))
         x_dict['window'] = self.post_transform(self.pretransform_win(x_dict['window']))
-        x_dict["example_y"] = self.pretransform_ey(x_dict["example"][:,-256:])
+        x_dict["example_y"] = self.pretransform_ey(x_dict["example"][:,-self.num_genes:])
         
         for conv in self.convs:
             x_dict = conv(x_dict, edge_index_dict)

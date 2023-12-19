@@ -4,27 +4,18 @@ import os
 from collections import namedtuple
 import torch_geometric
 import sys
-sys.path.insert(0, "../")
-from v1.dataset import TxPDataset
-from v1.main import KFOLD
 from tqdm import tqdm
 
-#Path to ST repository
-import sys
-sys.path.append('../../ST')
-from utils import *
+# Current path
+current_dir = os.path.dirname(__file__)
+parent_dir = os.path.dirname(current_dir)
 
-save_folder = "10xpro_st"
-size = 256
-numk = 6
-mdim = 512
-index_path = "index"
-emb_path = "exemplars_st"
-set = "train"
-parser_ST = get_main_parser()
-args_ST = parser_ST.parse_args()
-use_cuda = torch.cuda.is_available()
-device = torch.device("cuda" if use_cuda else "cpu")
+# Add path to ST repository
+sepal_dir = os.path.join(parent_dir[:-4], 'SEPAL')
+sys.path.append(sepal_dir)
+
+# Import SEPAL utils
+from utils import *
 
 def get_edge(x,radius):
 
@@ -74,28 +65,31 @@ def retrive_similer(index, i):
 
     return torch.stack(op_emb).view(numk,-1), torch.stack(op_counts).view(numk,len(op_counts[0]))    
 
-if args_ST.dataset == "V1_Breast_Cancer_Block_A":
-    dataset = get_dataset_from_args(args=args_ST)
-    # Declare train and test loaders
-    train_dl,val_dl,_ = dataset.get_pretrain_dataloaders(layer=args_ST.prediction_layer,batch_size = args_ST.batch_size, shuffle = args_ST.shuffle, use_cuda = use_cuda)
-    dataloaders = {"trainVisium":train_dl, "valVisium":val_dl}
+parser_ST = get_main_parser()
+args_ST = parser_ST.parse_args()
+use_cuda = torch.cuda.is_available()
+device = torch.device("cuda" if use_cuda else "cpu")
 
-# Get stnet dataset from the values defined in args
-elif args_ST.dataset == "stnet_dataset":
-    dataset = get_dataset_from_args(args=args_ST)
-    # Declare train, test and val dataloaders
-    train_dl, val_dl, test_dl = dataset.get_pretrain_dataloaders(layer=args_ST.prediction_layer,batch_size = args_ST.batch_size, shuffle = args_ST.shuffle, use_cuda = use_cuda)
-    dataloaders = {"trainSTnet":train_dl, "valSTnet":val_dl, "testSTnet":test_dl}
+# Parameters
+save_folder = f"graphs/{args_ST.dataset}"
+emb_path = f"exemplars/{args_ST.dataset}"
+numk = 6
 
-fold=0
-save_name = save_folder + "/" + str(fold)
-os.makedirs(save_name,exist_ok=True)
-foldername = f"{save_name}/graphs_{numk}"
-os.makedirs(foldername, exist_ok=True)                    
+# Create save folder if necessary
+os.makedirs(os.path.join(current_dir,save_folder),exist_ok=True)     
+
+# Get dataset from the values defined in args
+dataset = get_dataset_from_args(args=args_ST)
+# Declare data loaders
+train_dl, val_dl, test_dl = dataset.get_pretrain_dataloaders(layer=args_ST.prediction_layer, batch_size = args_ST.batch_size, shuffle = args_ST.shuffle, use_cuda = use_cuda)
+dataloaders = {f"train_{args_ST.dataset}": train_dl, f"val_{args_ST.dataset}": val_dl}
+# Add test loader only if it is not None
+if test_dl is not None:
+    dataloaders[f"test_{args_ST.dataset}"] = test_dl     
 
 for exemplar_name,dataloader in dataloaders.items():
-    embs = torch.load(f"{emb_path}/{exemplar_name}.pt")
-    index = np.load(f"{emb_path}/{fold}/{index_path}/{exemplar_name}.npy")
+    embs = torch.load(f"{current_dir}/{emb_path}/{exemplar_name}.pt")
+    index = np.load(f"{current_dir}/{emb_path}/{exemplar_name}.npy")
     img_data = []
     masks = []
     for i in tqdm(range(len(dataloader.dataset))):
@@ -131,4 +125,4 @@ for exemplar_name,dataloader in dataloaders.items():
     edge_index = torch_geometric.nn.knn_graph(data["example"]["x"], k=3, loop=False)
     data["example", "close", "example"].edge_index = edge_index
 
-    torch.save(data, f"{foldername}/{exemplar_name}.pt")
+    torch.save(data, f"{current_dir}/{save_folder}/{exemplar_name}.pt")

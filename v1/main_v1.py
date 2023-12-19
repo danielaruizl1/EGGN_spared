@@ -6,7 +6,7 @@ import pytorch_lightning as pl
 from functools import partial
 import torch
 import collections
-from train import TrainerModel
+from train_v1 import TrainerModel
 from sklearn.model_selection import KFold
 import torchvision
 from pytorch_lightning.plugins import DDPPlugin

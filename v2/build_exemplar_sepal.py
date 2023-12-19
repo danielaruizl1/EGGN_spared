@@ -8,41 +8,35 @@ from joblib import Parallel, delayed
 import sys
 from torchvision.transforms import Compose, Normalize
 
-#Path to EGN v1
-sys.path.insert(0, "../")
-from v1.main import KFOLD 
+# Current path
+current_dir = os.path.dirname(__file__)
+parent_dir = os.path.dirname(current_dir)
 
-#Path to ST repository
-import sys
-sys.path.append('../../ST')
+# Add path to ST repository
+sepal_dir = os.path.join(parent_dir[:-4], 'SEPAL')
+sys.path.append(sepal_dir)
+
+# Import SEPAL utils
 from utils import *
 
 parser_ST = get_main_parser()
 args_ST = parser_ST.parse_args()
 use_cuda = torch.cuda.is_available()
 
-# Get train and test visium datasets from the values defined in args
-if args_ST.dataset == "V1_Breast_Cancer_Block_A":
-    dataset = get_dataset_from_args(args=args_ST)
-    # Declare train and test loaders
-    train_dl,val_dl,_ = dataset.get_pretrain_dataloaders(layer=args_ST.prediction_layer, batch_size = args_ST.batch_size, shuffle = args_ST.shuffle, use_cuda = use_cuda)
-    dataloaders = {"trainVisium":train_dl, "valVisium":val_dl}
+# Get dataset from the values defined in args
+dataset = get_dataset_from_args(args=args_ST)
+# Declare data loaders
+train_dl, val_dl, test_dl = dataset.get_pretrain_dataloaders(layer=args_ST.prediction_layer, batch_size = args_ST.batch_size, shuffle = args_ST.shuffle, use_cuda = use_cuda)
+dataloaders = {f"train_{args_ST.dataset}": train_dl, f"val_{args_ST.dataset}": val_dl}
+# Add test loader only if it is not None
+if test_dl is not None:
+    dataloaders[f"test_{args_ST.dataset}"] = test_dl
 
-# Get stnet dataset from the values defined in args
-elif args_ST.dataset == "stnet_dataset":
-    dataset = get_dataset_from_args(args=args_ST)
-    # Declare train, test and val dataloaders
-    train_dl, val_dl, test_dl = dataset.get_pretrain_dataloaders(batch_size = args_ST.batch_size, shuffle = args_ST.shuffle, use_cuda = use_cuda)
-    dataloaders = {"trainSTnet":train_dl, "valSTnet":val_dl, "testSTnet":test_dl}
-
-index_dir = "index"
-save_dir = 'exemplars_st'
-reference=KFOLD[0][0]
-fold = 0
+save_dir = f"{current_dir}/exemplars/{args_ST.dataset}"
 TORCH_HOME = os.path.join('.torch')
 os.makedirs(TORCH_HOME, exist_ok=True)
 
-os.makedirs(os.path.join(save_dir, str(fold), index_dir),exist_ok=True)
+os.makedirs(os.path.join(save_dir),exist_ok=True)
 os.environ['TORCH_HOME'] = TORCH_HOME
 encoder = torchvision.models.resnet18(True)
 features = encoder.fc.in_features
@@ -66,7 +60,7 @@ def generate():
         # el tensor viene de dataloader(batch).obsm['patches_scale_1.0'] con shape [batch size(64), 3, 224, 224]
         return encoder(patches).view(-1,features) # shape post encoder [64, 2048, 1, 1] -> pasa a ser [64, 2048]
     
-    for save_name,dataloader in dataloaders.items():
+    for save_name, dataloader in dataloaders.items():
         img_embedding = []
         for data in tqdm(dataloader):
             # Get patches of the whole slide image contained in dataloader
@@ -123,7 +117,7 @@ def create_search_index(save_name):
         return myQ
 
     Q = Parallel(n_jobs=num_cores)(delayed(add)(q_values[f],q_infos[f],Q[f]) for f in range(q_values.shape[0]))
-    np.save(f"{save_dir}/{fold}/{index_dir}/{save_name}.npy", [myq.list for myq in Q])
+    np.save(f"{save_dir}/{save_name}.npy", [myq.list for myq in Q])
     
 for save_name in dataloaders.keys():
     create_search_index(save_name)
