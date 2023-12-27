@@ -5,40 +5,59 @@ import torchvision
 import numpy as np
 from tqdm import tqdm
 from joblib import Parallel, delayed
-import sys
 from torchvision.transforms import Compose, Normalize
+from spared.datasets import get_dataset
+import json
+import argparse
 
-# Current path
-current_dir = os.path.dirname(__file__)
-parent_dir = os.path.dirname(current_dir)
+# Add argparse
+parser = argparse.ArgumentParser(description="Arguments for training EGGN")
+parser.add_argument("--dataset", type=str, required=True, help="Dataset to use")
+parser.add_argument('--batch_size', type=int, default=64, help='Batch size')
+parser.add_argument('--num_cores', type=int, default=12, help='Number of cores')
+parser.add_argument('--numk', type=int, default=6, help='Number of k')
+parser.add_argument("--num_epochs", type=int, default=50, help="Number of epochs")
+parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs")
+parser.add_argument("--max_steps", type=int, default=100, help="Max steps")
+parser.add_argument("--val_interval", type=float, default=0.8, help="Validation interval")
+parser.add_argument("--lr", type=float, default=5e-4, help="Learning rate")
+parser.add_argument("--verbose_step", type=int, default=10, help="Verbose step")
+parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay")
+parser.add_argument("--mdim", type=int, default=512, help="Dimension of the message")
+parser.add_argument("--num_layers", type=int, default=4, help="Number of layers")
+parser.add_argument("--optim_metric", type=str, default="MSE", help="Metric to optimize")
+args = parser.parse_args()
 
-# Add path to ST repository
-sepal_dir = os.path.join(parent_dir[:-4], 'SEPAL')
-sys.path.append(sepal_dir)
+# Get dataset config
+dataset_config_path = os.path.join("spared","configs",args.dataset+".json")
 
-# Import SEPAL utils
-from utils import *
+with open(dataset_config_path, 'r') as f:
+    dataset_config = json.load(f)
 
-parser_ST = get_main_parser()
-args_ST = parser_ST.parse_args()
 use_cuda = torch.cuda.is_available()
+device = torch.device("cuda" if use_cuda else "cpu")
 
-# Get dataset from the values defined in args
-dataset = get_dataset_from_args(args=args_ST)
+# Get dataset according to the dataset name passed in args
+dataset = get_dataset(args.dataset)
+
+# FIXME: Cambiar el nombre de batch size
 # Declare data loaders
-train_dl, val_dl, test_dl = dataset.get_pretrain_dataloaders(layer=args_ST.prediction_layer, batch_size = args_ST.batch_size, shuffle = args_ST.shuffle, use_cuda = use_cuda)
-dataloaders = {f"train_{args_ST.dataset}": train_dl, f"val_{args_ST.dataset}": val_dl}
+train_dl, val_dl, test_dl = dataset.get_pretrain_dataloaders(layer=dataset_config["prediction_layer"], 
+                                                             batch_size = args.batch_size,
+                                                             use_cuda = use_cuda)
+
+dataloaders = {f"train_{args.dataset}": train_dl, f"val_{args.dataset}": val_dl}
 # Add test loader only if it is not None
 if test_dl is not None:
-    dataloaders[f"test_{args_ST.dataset}"] = test_dl
+    dataloaders[f"test_{args.dataset}"] = test_dl
 
-save_dir = f"{current_dir}/exemplars/{args_ST.dataset}"
+save_dir = f"exemplars/{args.dataset}"
 TORCH_HOME = os.path.join('.torch')
 os.makedirs(TORCH_HOME, exist_ok=True)
 
 os.makedirs(os.path.join(save_dir),exist_ok=True)
 os.environ['TORCH_HOME'] = TORCH_HOME
-encoder = torchvision.models.resnet18(True)
+encoder = torchvision.models.resnet18(weights="IMAGENET1K_V1")
 features = encoder.fc.in_features
 modules=list(encoder.children())[:-1]
 encoder=torch.nn.Sequential(*modules)
@@ -46,10 +65,6 @@ for p in encoder.parameters():
     p.requires_grad = False
 encoder=encoder.cuda()
 encoder.eval()
-
-num_cores = 12
-batch_size = 64
-window = 256   
 
 transforms = Compose([Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
 
@@ -64,6 +79,7 @@ def generate():
         img_embedding = []
         for data in tqdm(dataloader):
             # Get patches of the whole slide image contained in dataloader
+            # FIXME: Buscar los parches con cualquier tamaño
             tissue_tiles = data.obsm['patches_scale_1.0']
             tissue_tiles = tissue_tiles.reshape((tissue_tiles.shape[0], round(np.sqrt(tissue_tiles.shape[1]/3)), round(np.sqrt(tissue_tiles.shape[1]/3)), -1))
             # Permute dimensions to be in correct order for normalization
@@ -74,7 +90,6 @@ def generate():
             tissue_tiles = transforms(tissue_tiles)
             # extract patch encoding
             img_embedding += [extract(tissue_tiles)]
-
         # Embedding of all the patches of the loaded image
         img_embedding = torch.cat(img_embedding).contiguous()
         print(img_embedding.size())
@@ -99,7 +114,7 @@ def create_search_index(save_name):
     
         def __repr__(self):
             return str(self.list)
-          
+    
     p = torch.load(f"{save_dir}/{save_name}.pt").cuda() 
     Q = [Queue(max_size=128) for _ in range(p.size(0))]   
     op = torch.load(f"{save_dir}/{save_name}.pt").cuda()
@@ -116,7 +131,7 @@ def create_search_index(save_name):
             myQ.add((-q_value[idx],q_info[idx],save_name))
         return myQ
 
-    Q = Parallel(n_jobs=num_cores)(delayed(add)(q_values[f],q_infos[f],Q[f]) for f in range(q_values.shape[0]))
+    Q = Parallel(n_jobs=args.num_cores)(delayed(add)(q_values[f],q_infos[f],Q[f]) for f in range(q_values.shape[0]))
     np.save(f"{save_dir}/{save_name}.npy", [myq.list for myq in Q])
     
 for save_name in dataloaders.keys():

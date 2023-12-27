@@ -1,0 +1,12 @@
+{
+    "num_epochs" : 1000,
+    "gpus" : 1,
+    "max_steps" : 1000,
+    "val_interval" : 0.8,
+    "verbose_step" : 10,
+    "weight_decay" : 1e-4,
+    "mdim" : 512,
+    "num_layers" : 4,
+    "optim_metric" : "MSE",
+    "batch_size" : 64
+}

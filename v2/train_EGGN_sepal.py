@@ -4,11 +4,12 @@ import time
 import datetime
 import pytorch_lightning as pl
 import os
-import numpy as np
+import numpy as npf
 import pandas as pd
 import sys
 import json
 import wandb
+from spared.metrics import get_metrics
 
 # Current path
 current_dir = os.path.dirname(__file__)
@@ -19,11 +20,6 @@ v1_dir = os.path.join(parent_dir, 'v1')
 sys.path.append(v1_dir)
 from train_v1 import pearsonr, compute_correlations
 
-# Add path to ST repository
-sepal_dir = os.path.join(parent_dir[:-4], 'SEPAL')
-sys.path.append(sepal_dir)
-from metrics import get_metrics
- 
 class TrainerModel(pl.LightningModule):
     
     def __init__(self, config,  model, num_genes):
@@ -67,7 +63,7 @@ class TrainerModel(pl.LightningModule):
         loss   = self.criterion(pred_count,data["window"]["y"])
         corrloss = self.correlationMetric(pred_count,data["window"]["y"])
         mask = data["window"]["mask"]
-        metrics = get_metrics(data["window"]["y"],pred_count)
+        metrics = get_metrics(data["window"]["y"],pred_count,mask)
         metrics_df = pd.DataFrame(metrics, index=[0])
         train_dict={f'train_{key}': val for key, val in metrics.items()}
         train_dict["epoch"]=self.current_epoch
@@ -119,7 +115,7 @@ class TrainerModel(pl.LightningModule):
     def test_step(self,data,idx):
         mask = data["window"]["mask"]
         pred_count = self.model(data.x_dict,data.edge_index_dict)
-        metrics = get_metrics(data["window"]["y"],pred_count)
+        metrics = get_metrics(data["window"]["y"],pred_count,mask)
         metrics_df = pd.DataFrame(metrics, index=[0])
         test_dict={f'test_{key}': val for key, val in metrics.items()}
         test_dict["epoch"]=self.current_epoch
@@ -128,15 +124,14 @@ class TrainerModel(pl.LightningModule):
         
     def validation_epoch_end(self,outputs):
         
-        logfun = self.config.logfun
-        
+        logfun = self.config.logfun       
         pred_count = torch.cat([i[0] for i in outputs])
         count = torch.cat([i[1] for i in outputs])
         mask = torch.cat([i[2] for i in outputs])
         pred_count = self.all_gather(pred_count).view(-1,self.num_genes)
         count = self.all_gather(count).view(-1,self.num_genes)
         mask = self.all_gather(mask).view(-1,self.num_genes)
-        metrics = get_metrics(count,pred_count)
+        metrics = get_metrics(count,pred_count,mask)
         val_dict={f'val_{key}': val for key, val in metrics.items()}
         val_dict["epoch"]=self.current_epoch
         wandb.log(val_dict)

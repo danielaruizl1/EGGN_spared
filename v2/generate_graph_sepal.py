@@ -1,21 +1,35 @@
 import numpy as np
 import torch
 import os
-from collections import namedtuple
 import torch_geometric
-import sys
 from tqdm import tqdm
+from spared.datasets import get_dataset
+import argparse
+import json
 
-# Current path
-current_dir = os.path.dirname(__file__)
-parent_dir = os.path.dirname(current_dir)
+# Add argparse
+parser = argparse.ArgumentParser(description="Arguments for training EGGN")
+parser.add_argument("--dataset", type=str, required=True, help="Dataset to use")
+parser.add_argument('--batch_size', type=int, default=64, help='Batch size')
+parser.add_argument('--num_cores', type=int, default=12, help='Number of cores')
+parser.add_argument('--numk', type=int, default=6, help='Number of k')
+parser.add_argument("--num_epochs", type=int, default=50, help="Number of epochs")
+parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs")
+parser.add_argument("--max_steps", type=int, default=100, help="Max steps")
+parser.add_argument("--val_interval", type=float, default=0.8, help="Validation interval")
+parser.add_argument("--lr", type=float, default=5e-4, help="Learning rate")
+parser.add_argument("--verbose_step", type=int, default=10, help="Verbose step")
+parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay")
+parser.add_argument("--mdim", type=int, default=512, help="Dimension of the message")
+parser.add_argument("--num_layers", type=int, default=4, help="Number of layers")
+parser.add_argument("--optim_metric", type=str, default="MSE", help="Metric to optimize")
+args = parser.parse_args()
 
-# Add path to ST repository
-sepal_dir = os.path.join(parent_dir[:-4], 'SEPAL')
-sys.path.append(sepal_dir)
+# Get dataset config
+dataset_config_path = os.path.join("spared","configs",args.dataset+".json")
 
-# Import SEPAL utils
-from utils import *
+with open(dataset_config_path, 'r') as f:
+    dataset_config = json.load(f)
 
 def get_edge(x,radius):
 
@@ -53,7 +67,7 @@ def get_cross_edge(x):
 def retrive_similer(index, i):
     index = index[i]
     index = np.array([[i,j,k] for i,j,k in sorted(index, key = lambda x : float(x[0]))]) 
-    index = index[-numk:]
+    index = index[-args.numk:]
 
     op_emb = []
     op_counts = []
@@ -63,33 +77,33 @@ def retrive_similer(index, i):
         #op_counts.append(torch.tensor(dataset.data.X[op_name].todense()).squeeze())
         op_counts.append(torch.tensor(dataset.adata.X[op_name]).squeeze())
 
-    return torch.stack(op_emb).view(numk,-1), torch.stack(op_counts).view(numk,len(op_counts[0]))    
+    return torch.stack(op_emb).view(args.numk,-1), torch.stack(op_counts).view(args.numk,len(op_counts[0]))    
 
-parser_ST = get_main_parser()
-args_ST = parser_ST.parse_args()
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
-# Parameters
-save_folder = f"graphs/{args_ST.dataset}"
-emb_path = f"exemplars/{args_ST.dataset}"
-numk = 6
+# Paths
+save_folder = f"graphs/{args.dataset}"
+emb_path = f"exemplars/{args.dataset}"
 
 # Create save folder if necessary
-os.makedirs(os.path.join(current_dir,save_folder),exist_ok=True)     
+os.makedirs(save_folder, exist_ok=True)     
 
 # Get dataset from the values defined in args
-dataset = get_dataset_from_args(args=args_ST)
+dataset = get_dataset(args.dataset)
+
 # Declare data loaders
-train_dl, val_dl, test_dl = dataset.get_pretrain_dataloaders(layer=args_ST.prediction_layer, batch_size = args_ST.batch_size, shuffle = args_ST.shuffle, use_cuda = use_cuda)
-dataloaders = {f"train_{args_ST.dataset}": train_dl, f"val_{args_ST.dataset}": val_dl}
+train_dl, val_dl, test_dl = dataset.get_pretrain_dataloaders(layer=dataset_config["prediction_layer"], 
+                                                             batch_size = args.batch_size, 
+                                                             use_cuda = use_cuda)
+dataloaders = {f"train_{args.dataset}": train_dl, f"val_{args.dataset}": val_dl}
 # Add test loader only if it is not None
 if test_dl is not None:
-    dataloaders[f"test_{args_ST.dataset}"] = test_dl     
+    dataloaders[f"test_{args.dataset}"] = test_dl     
 
 for exemplar_name,dataloader in dataloaders.items():
-    embs = torch.load(f"{current_dir}/{emb_path}/{exemplar_name}.pt")
-    index = np.load(f"{current_dir}/{emb_path}/{exemplar_name}.npy")
+    embs = torch.load(f"{emb_path}/{exemplar_name}.pt")
+    index = np.load(f"{emb_path}/{exemplar_name}.npy")
     img_data = []
     masks = []
     for i in tqdm(range(len(dataloader.dataset))):
@@ -125,4 +139,4 @@ for exemplar_name,dataloader in dataloaders.items():
     edge_index = torch_geometric.nn.knn_graph(data["example"]["x"], k=3, loop=False)
     data["example", "close", "example"].edge_index = edge_index
 
-    torch.save(data, f"{current_dir}/{save_folder}/{exemplar_name}.pt")
+    torch.save(data, f"{save_folder}/{exemplar_name}.pt")
