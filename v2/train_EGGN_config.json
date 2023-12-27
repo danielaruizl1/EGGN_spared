@@ -1,8 +1,7 @@
 {
-    "num_epochs" : 1000,
     "gpus" : 1,
     "max_steps" : 1000,
-    "val_interval" : 0.8,
+    "val_interval" : 1,
     "verbose_step" : 10,
     "weight_decay" : 1e-4,
     "mdim" : 512,

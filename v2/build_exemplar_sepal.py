@@ -13,10 +13,10 @@ import argparse
 # Add argparse
 parser = argparse.ArgumentParser(description="Arguments for training EGGN")
 parser.add_argument("--dataset", type=str, required=True, help="Dataset to use")
+parser.add_argument("--prediction_layer", type=str, default="c_d_log1p", help="Layer to use for prediction")
 parser.add_argument('--batch_size', type=int, default=64, help='Batch size')
 parser.add_argument('--num_cores', type=int, default=12, help='Number of cores')
 parser.add_argument('--numk', type=int, default=6, help='Number of k')
-parser.add_argument("--num_epochs", type=int, default=50, help="Number of epochs")
 parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs")
 parser.add_argument("--max_steps", type=int, default=100, help="Max steps")
 parser.add_argument("--val_interval", type=float, default=0.8, help="Validation interval")
@@ -28,12 +28,6 @@ parser.add_argument("--num_layers", type=int, default=4, help="Number of layers"
 parser.add_argument("--optim_metric", type=str, default="MSE", help="Metric to optimize")
 args = parser.parse_args()
 
-# Get dataset config
-dataset_config_path = os.path.join("spared","configs",args.dataset+".json")
-
-with open(dataset_config_path, 'r') as f:
-    dataset_config = json.load(f)
-
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
@@ -42,7 +36,7 @@ dataset = get_dataset(args.dataset)
 
 # FIXME: Cambiar el nombre de batch size
 # Declare data loaders
-train_dl, val_dl, test_dl = dataset.get_pretrain_dataloaders(layer=dataset_config["prediction_layer"], 
+train_dl, val_dl, test_dl = dataset.get_pretrain_dataloaders(layer=args.prediction_layer, 
                                                              batch_size = args.batch_size,
                                                              use_cuda = use_cuda)
 
@@ -115,6 +109,7 @@ def create_search_index(save_name):
         def __repr__(self):
             return str(self.list)
     
+    # FIXME: Cambiar dataset para que siempre haya referencia a train
     p = torch.load(f"{save_dir}/{save_name}.pt").cuda() 
     Q = [Queue(max_size=128) for _ in range(p.size(0))]   
     op = torch.load(f"{save_dir}/{save_name}.pt").cuda()
@@ -122,7 +117,7 @@ def create_search_index(save_name):
     topk = min(len(dist),100)
     knn = dist.topk(topk, dim = 1, largest=False)
 
-    #Quitar primera posición (sacar 101)
+    # FIXME: Quitar primera posición (sacar 101)
     q_values = knn.values.cpu().numpy()
     q_infos =  knn.indices.cpu().numpy() 
 

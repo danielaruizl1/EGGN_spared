@@ -10,10 +10,10 @@ import json
 # Add argparse
 parser = argparse.ArgumentParser(description="Arguments for training EGGN")
 parser.add_argument("--dataset", type=str, required=True, help="Dataset to use")
+parser.add_argument("--prediction_layer", type=str, default="c_d_log1p", help="Layer to use for prediction")
 parser.add_argument('--batch_size', type=int, default=64, help='Batch size')
 parser.add_argument('--num_cores', type=int, default=12, help='Number of cores')
 parser.add_argument('--numk', type=int, default=6, help='Number of k')
-parser.add_argument("--num_epochs", type=int, default=50, help="Number of epochs")
 parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs")
 parser.add_argument("--max_steps", type=int, default=100, help="Max steps")
 parser.add_argument("--val_interval", type=float, default=0.8, help="Validation interval")
@@ -24,12 +24,6 @@ parser.add_argument("--mdim", type=int, default=512, help="Dimension of the mess
 parser.add_argument("--num_layers", type=int, default=4, help="Number of layers")
 parser.add_argument("--optim_metric", type=str, default="MSE", help="Metric to optimize")
 args = parser.parse_args()
-
-# Get dataset config
-dataset_config_path = os.path.join("spared","configs",args.dataset+".json")
-
-with open(dataset_config_path, 'r') as f:
-    dataset_config = json.load(f)
 
 def get_edge(x,radius):
 
@@ -93,7 +87,7 @@ os.makedirs(save_folder, exist_ok=True)
 dataset = get_dataset(args.dataset)
 
 # Declare data loaders
-train_dl, val_dl, test_dl = dataset.get_pretrain_dataloaders(layer=dataset_config["prediction_layer"], 
+train_dl, val_dl, test_dl = dataset.get_pretrain_dataloaders(layer=args.prediction_layer, 
                                                              batch_size = args.batch_size, 
                                                              use_cuda = use_cuda)
 dataloaders = {f"train_{args.dataset}": train_dl, f"val_{args.dataset}": val_dl}
@@ -120,6 +114,7 @@ for exemplar_name,dataloader in dataloaders.items():
         img_data.append([pos, p, py, op, opy])
 
     all_img_data = torch.cat(([i[0] for i in img_data])).clone()
+    # FIXME: Cambiar el radio   
     window_edge = get_edge(all_img_data.type(torch.float),275)
     unique_op, unique_opy, cross_edge = get_cross_edge(img_data)
     print(window_edge.size(), unique_op.size(), unique_opy.size(), cross_edge.size())

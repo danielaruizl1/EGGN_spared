@@ -4,7 +4,7 @@ import time
 import datetime
 import pytorch_lightning as pl
 import os
-import numpy as npf
+import numpy as np
 import pandas as pd
 import sys
 import json
@@ -22,7 +22,7 @@ from train_v1 import pearsonr, compute_correlations
 
 class TrainerModel(pl.LightningModule):
     
-    def __init__(self, config,  model, num_genes):
+    def __init__(self, config,  model):
         super().__init__()
         self.model = model
         self.config = config
@@ -38,15 +38,8 @@ class TrainerModel(pl.LightningModule):
         self.start_time  = None
         self.last_saved = None
         self.best_metrics = None
-        self.num_genes = num_genes
-        
-    @property
-    def num_training_steps(self) -> int:
-        """Total training steps inferred from datamodule and devices."""
-        dataset =  self.trainer._data_connector._train_dataloader_source.dataloader() 
-        num_devices = max(1, self.trainer.num_gpus, self.trainer.num_processes) * self.trainer.num_nodes
-        return len(dataset) // num_devices
-    
+        self.validation_step_outputs = []
+           
     def correlationMetric(self,x, y):
       corr = 0
       for idx in range(x.size(1)):
@@ -86,7 +79,7 @@ class TrainerModel(pl.LightningModule):
             
             current_lr = self.optimizers().param_groups[0]['lr']
             
-            len_loader = self.num_training_steps
+            len_loader = self.config.max_steps
             
             batches_done = self.current_epoch  * len_loader + idx + 1
             batches_left = self.trainer.max_epochs * len_loader - batches_done
@@ -110,27 +103,29 @@ class TrainerModel(pl.LightningModule):
     def validation_step(self,data,idx):
         mask = data["window"]["mask"]
         pred_count = self.model(data.x_dict,data.edge_index_dict)
-        return pred_count,data["window"]["y"],mask
+        outputs = (pred_count,data["window"]["y"],mask)
+        self.validation_step_outputs.append(outputs)
+        return outputs
     
     def test_step(self,data,idx):
         mask = data["window"]["mask"]
         pred_count = self.model(data.x_dict,data.edge_index_dict)
         metrics = get_metrics(data["window"]["y"],pred_count,mask)
-        metrics_df = pd.DataFrame(metrics, index=[0])
         test_dict={f'test_{key}': val for key, val in metrics.items()}
         test_dict["epoch"]=self.current_epoch
         wandb.log(test_dict)
         return pred_count,data["window"]["y"]
         
-    def validation_epoch_end(self,outputs):
+    def on_validation_epoch_end(self):
         
+        outputs = self.validation_step_outputs
         logfun = self.config.logfun       
         pred_count = torch.cat([i[0] for i in outputs])
         count = torch.cat([i[1] for i in outputs])
         mask = torch.cat([i[2] for i in outputs])
-        pred_count = self.all_gather(pred_count).view(-1,self.num_genes)
-        count = self.all_gather(count).view(-1,self.num_genes)
-        mask = self.all_gather(mask).view(-1,self.num_genes)
+        pred_count = self.all_gather(pred_count).view(-1,self.config.num_genes)
+        count = self.all_gather(count).view(-1,self.config.num_genes)
+        mask = self.all_gather(mask).view(-1,self.config.num_genes)
         metrics = get_metrics(count,pred_count,mask)
         val_dict={f'val_{key}': val for key, val in metrics.items()}
         val_dict["epoch"]=self.current_epoch
@@ -141,7 +136,7 @@ class TrainerModel(pl.LightningModule):
         gene_corr = compute_correlations(count, pred_count, True)
         corr = np.mean(gene_corr)
         
-        if self.trainer.is_global_zero and self.trainer.num_gpus != 0:
+        if self.trainer.is_global_zero and self.trainer.num_devices != 0:
             if self.config.opt_metric == "MSE" or self.config.opt_metric == "MAE":
                 if metrics[self.config.opt_metric] < self.eval_opt_metric:
                     self.best_metrics = metrics
@@ -171,6 +166,7 @@ class TrainerModel(pl.LightningModule):
                  )
                 )            
             logfun("==" * 25)
+        self.validation_step_outputs.clear()  # free memory
         
     def save(self, epoch, loss, acc):
         
