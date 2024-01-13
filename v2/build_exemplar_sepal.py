@@ -3,18 +3,17 @@ import torch
 import heapq
 import torchvision
 import numpy as np
+import argparse
 from tqdm import tqdm
 from joblib import Parallel, delayed
 from torchvision.transforms import Compose, Normalize
 from spared.datasets import get_dataset
-import json
-import argparse
 
 # Add argparse
 parser = argparse.ArgumentParser(description="Arguments for training EGGN")
 parser.add_argument("--dataset", type=str, required=True, help="Dataset to use")
 parser.add_argument("--prediction_layer", type=str, default="c_d_log1p", help="Layer to use for prediction")
-parser.add_argument('--batch_size', type=int, default=64, help='Batch size')
+parser.add_argument('--batch_size_dataloader', type=int, default=64, help='Batch size')
 parser.add_argument('--num_cores', type=int, default=12, help='Number of cores')
 parser.add_argument('--numk', type=int, default=6, help='Number of k')
 parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs")
@@ -26,6 +25,8 @@ parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight dec
 parser.add_argument("--mdim", type=int, default=512, help="Dimension of the message")
 parser.add_argument("--num_layers", type=int, default=4, help="Number of layers")
 parser.add_argument("--optim_metric", type=str, default="MSE", help="Metric to optimize")
+parser.add_argument("--patches_key", type=str, default="patches_scale_1.0", help="Key of the patches in the dataset")
+parser.add_argument("--graph_radius", type=float, default=1000, help="Graph radius")
 args = parser.parse_args()
 
 use_cuda = torch.cuda.is_available()
@@ -34,10 +35,10 @@ device = torch.device("cuda" if use_cuda else "cpu")
 # Get dataset according to the dataset name passed in args
 dataset = get_dataset(args.dataset)
 
-# FIXME: Cambiar el nombre de batch size
 # Declare data loaders
 train_dl, val_dl, test_dl = dataset.get_pretrain_dataloaders(layer=args.prediction_layer, 
-                                                             batch_size = args.batch_size,
+                                                             batch_size = args.batch_size_dataloader,
+                                                             shuffle = False,
                                                              use_cuda = use_cuda)
 
 dataloaders = {f"train_{args.dataset}": train_dl, f"val_{args.dataset}": val_dl}
@@ -51,7 +52,8 @@ os.makedirs(TORCH_HOME, exist_ok=True)
 
 os.makedirs(os.path.join(save_dir),exist_ok=True)
 os.environ['TORCH_HOME'] = TORCH_HOME
-encoder = torchvision.models.resnet18(weights="IMAGENET1K_V1")
+#encoder = torchvision.models.resnet18(weights="IMAGENET1K_V1")
+encoder = torchvision.models.resnet18(True)
 features = encoder.fc.in_features
 modules=list(encoder.children())[:-1]
 encoder=torch.nn.Sequential(*modules)
@@ -73,8 +75,7 @@ def generate():
         img_embedding = []
         for data in tqdm(dataloader):
             # Get patches of the whole slide image contained in dataloader
-            # FIXME: Buscar los parches con cualquier tamaño
-            tissue_tiles = data.obsm['patches_scale_1.0']
+            tissue_tiles = data.obsm[args.patches_key]
             tissue_tiles = tissue_tiles.reshape((tissue_tiles.shape[0], round(np.sqrt(tissue_tiles.shape[1]/3)), round(np.sqrt(tissue_tiles.shape[1]/3)), -1))
             # Permute dimensions to be in correct order for normalization
             tissue_tiles = tissue_tiles.permute(0,3,1,2).contiguous()
@@ -86,7 +87,6 @@ def generate():
             img_embedding += [extract(tissue_tiles)]
         # Embedding of all the patches of the loaded image
         img_embedding = torch.cat(img_embedding).contiguous()
-        print(img_embedding.size())
         # Save tensor of shape [#patches, 2048]. This tensor corresponds to the whole image encoded.
         torch.save(img_embedding, f"{save_dir}/{save_name}.pt")
 
@@ -109,17 +109,24 @@ def create_search_index(save_name):
         def __repr__(self):
             return str(self.list)
     
-    # FIXME: Cambiar dataset para que siempre haya referencia a train
     p = torch.load(f"{save_dir}/{save_name}.pt").cuda() 
     Q = [Queue(max_size=128) for _ in range(p.size(0))]   
-    op = torch.load(f"{save_dir}/{save_name}.pt").cuda()
+    op = torch.load(f"{save_dir}/train_{args.dataset}.pt").cuda()
     dist = torch.cdist(p.unsqueeze(0),op.unsqueeze(0),p = 1).squeeze(0)
-    topk = min(len(dist),100)
-    knn = dist.topk(topk, dim = 1, largest=False)
-
-    # FIXME: Quitar primera posición (sacar 101)
-    q_values = knn.values.cpu().numpy()
-    q_infos =  knn.indices.cpu().numpy() 
+    
+    if "train" in save_name:
+         # If we are getting the KNNs of the train dataset, ignore the closest NN (it is the patch itself)
+        topk = min(len(dist), 101)
+        # Take the top 100 distances and save their value and index
+        knn = dist.topk(topk, dim = 1, largest=False) 
+        q_values = knn.values[:, 1:].cpu().numpy()
+        q_infos =  knn.indices[:, 1:].cpu().numpy() 
+    
+    else:
+        topk = min(len(dist),100)
+        knn = dist.topk(topk, dim = 1, largest=False)
+        q_values = knn.values.cpu().numpy()
+        q_infos =  knn.indices.cpu().numpy()
 
     def add(q_value,q_info, myQ):
         for idx in range(len(q_value)):

@@ -11,7 +11,7 @@ import json
 parser = argparse.ArgumentParser(description="Arguments for training EGGN")
 parser.add_argument("--dataset", type=str, required=True, help="Dataset to use")
 parser.add_argument("--prediction_layer", type=str, default="c_d_log1p", help="Layer to use for prediction")
-parser.add_argument('--batch_size', type=int, default=64, help='Batch size')
+parser.add_argument('--batch_size_dataloader', type=int, default=64, help='Batch size')
 parser.add_argument('--num_cores', type=int, default=12, help='Number of cores')
 parser.add_argument('--numk', type=int, default=6, help='Number of k')
 parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs")
@@ -23,6 +23,8 @@ parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight dec
 parser.add_argument("--mdim", type=int, default=512, help="Dimension of the message")
 parser.add_argument("--num_layers", type=int, default=4, help="Number of layers")
 parser.add_argument("--optim_metric", type=str, default="MSE", help="Metric to optimize")
+parser.add_argument("--patches_key", type=str, default="patches_scale_1.0", help="Key of the patches in the dataset")
+parser.add_argument("--graph_radius", type=float, default=1000, help="Graph radius")
 args = parser.parse_args()
 
 def get_edge(x,radius):
@@ -67,8 +69,7 @@ def retrive_similer(index, i):
     op_counts = []
     for _, op_name, _ in index:
         op_name = int(op_name)
-        op_emb.append(embs[op_name])
-        #op_counts.append(torch.tensor(dataset.data.X[op_name].todense()).squeeze())
+        op_emb.append(embs_train[op_name])
         op_counts.append(torch.tensor(dataset.adata.X[op_name]).squeeze())
 
     return torch.stack(op_emb).view(args.numk,-1), torch.stack(op_counts).view(args.numk,len(op_counts[0]))    
@@ -88,14 +89,16 @@ dataset = get_dataset(args.dataset)
 
 # Declare data loaders
 train_dl, val_dl, test_dl = dataset.get_pretrain_dataloaders(layer=args.prediction_layer, 
-                                                             batch_size = args.batch_size, 
+                                                             batch_size = args.batch_size_dataloader, 
                                                              use_cuda = use_cuda)
 dataloaders = {f"train_{args.dataset}": train_dl, f"val_{args.dataset}": val_dl}
 # Add test loader only if it is not None
 if test_dl is not None:
-    dataloaders[f"test_{args.dataset}"] = test_dl     
+    dataloaders[f"test_{args.dataset}"] = test_dl    
 
-for exemplar_name,dataloader in dataloaders.items():
+embs_train = torch.load(f"{emb_path}/train_{args.dataset}.pt") 
+
+for exemplar_name, dataloader in dataloaders.items():
     embs = torch.load(f"{emb_path}/{exemplar_name}.pt")
     index = np.load(f"{emb_path}/{exemplar_name}.npy")
     img_data = []
@@ -104,18 +107,17 @@ for exemplar_name,dataloader in dataloaders.items():
         pos = torch.tensor(dataloader.dataset[i].obsm["spatial"]) #torch.Size([1, 2])
         p = embs[i] #torch.Size([512])
         p = torch.unsqueeze(p,0)
-        py = torch.tensor(dataloader.dataset[:].X[i]).squeeze() #torch.Size([1024])
+        py = torch.tensor(dataloader.dataset[:].X[i]).squeeze() #torch.Size([num_genes])
         py = torch.unsqueeze(py,0)
-        op, opy = retrive_similer(index, i) #torch.Size([6, 512]), torch.Size([6, 1024])
+        op, opy = retrive_similer(index, i) #torch.Size([6, 512]), torch.Size([6, num_genes])
         op = torch.unsqueeze(op,0)
         opy = torch.unsqueeze(opy,0)
         mask = torch.tensor(dataloader.dataset[i].layers["mask"])
         masks.append(mask)
         img_data.append([pos, p, py, op, opy])
 
-    all_img_data = torch.cat(([i[0] for i in img_data])).clone()
-    # FIXME: Cambiar el radio   
-    window_edge = get_edge(all_img_data.type(torch.float),275)
+    all_img_data = torch.cat(([i[0] for i in img_data])).clone() 
+    window_edge = get_edge(all_img_data.type(torch.float),args.graph_radius)
     unique_op, unique_opy, cross_edge = get_cross_edge(img_data)
     print(window_edge.size(), unique_op.size(), unique_opy.size(), cross_edge.size())
 

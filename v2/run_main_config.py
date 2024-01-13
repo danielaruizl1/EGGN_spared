@@ -1,13 +1,12 @@
 import json
 import subprocess
 import argparse
-import os
 
 def run_egn():
     
     # Get parsed the path of the config file
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', required=True,type=str, help='Dataset name')
+    parser.add_argument('--dataset', type=str, default="10xgenomic_human_breast_cancer", help='Dataset name')
     parser.add_argument('--lr', type=float, default=5e-4, help='Learning rate')
     parser.add_argument('--prediction_layer', type=str, default="c_d_log1p", help='Layer to use for prediction')
     parser.add_argument('--train_config', type=str, default="train_EGGN_config.json", help='Config file path with train hyperparameters')

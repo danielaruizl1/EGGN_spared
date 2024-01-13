@@ -4,6 +4,7 @@ import torch_geometric.nn as pyg
 from geb import EGBBlock
 from csra import CSRA
 from heteroconv import HeteroConv
+from torchvision.transforms import Normalize
 
 '''
 code is based on https://pytorch-geometric.readthedocs.io/en/latest/
@@ -40,6 +41,7 @@ class HeteroGNN(torch.nn.Module):
 
         self.pool = CSRA(hidden_channels)
         self.lin = pyg.Linear(hidden_channels, out_channels)
+        self.test_transforms = Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         
     def forward(self, x_dict, edge_index_dict):
         

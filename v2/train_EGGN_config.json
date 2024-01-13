@@ -1,11 +1,13 @@
 {
     "gpus" : 1,
-    "max_steps" : 1000,
+    "max_steps" : 2000,
     "val_interval" : 1,
     "verbose_step" : 10,
     "weight_decay" : 1e-4,
     "mdim" : 512,
     "num_layers" : 4,
     "optim_metric" : "MSE",
-    "batch_size" : 64
+    "batch_size_dataloader" : 64,
+    "patches_key" : "patches_scale_1.0",
+    "graph_radius" : 1000
 }

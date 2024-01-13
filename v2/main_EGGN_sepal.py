@@ -13,15 +13,21 @@ import wandb
 from pytorch_lightning.callbacks import ModelCheckpoint
 import json
 from datetime import datetime
+from spared.datasets import get_dataset
+from torch.utils.data import ConcatDataset
+import pandas as pd
 
 cudnn.benchmark = True
 use_cuda = torch.cuda.is_available()
+
+# Declare device
+device = torch.device("cuda" if use_cuda else "cpu")
 
 # Add argparse
 parser = argparse.ArgumentParser(description="Arguments for training EGGN")
 parser.add_argument("--dataset", type=str, required=True, help="Dataset to use")
 parser.add_argument("--prediction_layer", type=str, default="c_d_log1p", help="Layer to use for prediction")
-parser.add_argument('--batch_size', type=int, default=64, help='Batch size')
+parser.add_argument('--batch_size_dataloader', type=int, default=64, help='Batch size')
 parser.add_argument('--num_cores', type=int, default=12, help='Number of cores')
 parser.add_argument('--numk', type=int, default=6, help='Number of k')
 parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs")
@@ -33,6 +39,8 @@ parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight dec
 parser.add_argument("--mdim", type=int, default=512, help="Dimension of the message")
 parser.add_argument("--num_layers", type=int, default=4, help="Number of layers")
 parser.add_argument("--optim_metric", type=str, default="MSE", help="Metric to optimize")
+parser.add_argument("--patches_key", type=str, default="patches_scale_1.0", help="Key of the patches in the dataset")
+parser.add_argument("--graph_radius", type=float, default=1000, help="Graph radius")
 args = parser.parse_args()
 
 dataset_config_path = os.path.join("spared","configs",args.dataset+".json")
@@ -81,16 +89,101 @@ CONFIG = collections.namedtuple('CONFIG', ['lr', 'logfun', 'dataset','verbose_st
 config = CONFIG(args.lr, print, args.dataset, args.verbose_step, args.weight_decay, save_dir, args.optim_metric, num_genes, args.max_steps)
 
 model = TrainerModel(config, model)
+checkpoint_callback = ModelCheckpoint(dirpath="checkpoints/"+wandb.run.name, monitor='val_loss')
 
 plt = pl.Trainer(num_nodes=1, devices = args.gpus, max_steps = args.max_steps, val_check_interval = args.val_interval, 
                  check_val_every_n_epoch = None, strategy="ddp",
-                 callbacks=[ModelCheckpoint(dirpath="checkpoints/"+wandb.run.name, monitor='val_loss')], logger = False)
+                 callbacks=[checkpoint_callback], logger = False)
 
 plt.fit(model,train_dataloaders=train_loader,val_dataloaders=val_loader)
 
+checkpoint_path= checkpoint_callback.best_model_path
+
 if f"test_{args.dataset}" in datasets.keys():
     test_loader = torch_geometric.loader.DataLoader(datasets[f"test_{args.dataset}"],batch_size=1)
-    plt.test(model, dataloaders=test_loader, ckpt_path=glob.glob(os.path.join("checkpoints",exp_name,"*.ckpt"))[0])
+    plt.test(model, dataloaders=test_loader, ckpt_path=checkpoint_path)
+
+# Load the best model after training
+checkpoint = torch.load(checkpoint_path)
+
+# Modify state dict to have the same keys
+original_state_dict = checkpoint['state_dict']
+new_state_dict = {}
+for key in original_state_dict:
+    # Remove the 'model.' prefix from each key
+    new_key = key.replace('model.', '')
+    new_state_dict[new_key] = original_state_dict[key]
+
+# Update the state dictionary in the checkpoint
+checkpoint['state_dict'] = new_state_dict
+
+# Load the model
+model = HeteroGNN(args.num_layers, args.mdim, num_genes)
+model.load_state_dict(checkpoint['state_dict'])
+
+# Get dataset from the values defined in args
+dataset = get_dataset(args.dataset)
+
+def get_predictions(model)->None:
+    
+    # Get complete dataloader
+    dataloaders = {'train':train_loader, 'val':val_loader}
+    if f"test_{args.dataset}" in datasets.keys():
+        dataloaders['test'] = test_loader
+
+    # Define global variables
+    glob_expression_pred = None
+    glob_ids = None
+
+    # Set model to eval mode
+    model.eval()
+
+    # Get complete predictions
+    with torch.no_grad():
+        for set_name in dataloaders.keys():
+            for data in dataloaders[set_name]:
+                # Splitting into x_dict and edge_index_dict
+                x_dict = {
+                    'window': data['window'].x.to(device),
+                    'example': data['example'].x.to(device)
+                }
+
+                edge_index_dict = {
+                    ('window', 'near', 'window'): data[('window', 'near', 'window')]['edge_index'].to(device),
+                    ('example', 'refer', 'window'): data[('example', 'refer', 'window')]['edge_index'].to(device),
+                    ('example', 'close', 'example'): data[('example', 'close', 'example')]['edge_index'].to(device)
+                }
+
+                expression_pred = model(x_dict, edge_index_dict)
+                ids = dataset.adata.obs[dataset.adata.obs.split == set_name].index.tolist()
+
+                # Concat batch to get global predictions and IDs
+                glob_expression_pred = expression_pred if glob_expression_pred is None else torch.cat((glob_expression_pred, expression_pred))
+                glob_ids = ids if glob_ids is None else glob_ids + ids
+
+        # Handle delta prediction
+        if 'deltas' in args.prediction_layer:
+            mean_key = f'{args.prediction_layer}_avg_exp'.replace('deltas', 'log1p')
+            means = torch.tensor(dataset.adata.var[mean_key], device=glob_expression_pred.device)
+            glob_expression_pred = glob_expression_pred+means
+        
+        # Put complete predictions in a single dataframe
+        pred_matrix = glob_expression_pred.detach().cpu().numpy()
+        pred_df = pd.DataFrame(pred_matrix, index=glob_ids, columns=dataset.adata.var_names)
+        pred_df = pred_df.reindex(dataset.adata.obs.index)
+
+        # Log predictions to wandb
+        wandb_df = pred_df.reset_index(names='sample')
+        wandb.log({'predictions': wandb.Table(dataframe=wandb_df)})
+        
+        # Add layer to adata
+        dataset.adata.layers[f'predictions,{args.prediction_layer}'] = pred_df
+
+# Get global prediction layer 
+get_predictions(model.to(device))
+
+# Get log final artifacts
+dataset.log_pred_image()
     
 wandb.finish()
 
