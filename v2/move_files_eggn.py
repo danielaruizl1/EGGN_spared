@@ -3,7 +3,7 @@ import os
 import pandas as pd
 
 # Upload the csv file with the optimal models
-df = pd.read_csv('optimal_models_names.csv')
+df = pd.read_csv('wandb_runs_csv/optimal_models_names.csv')
 
 # Define datafrae of optimal models for specific sota
 sota = "EGGN"
