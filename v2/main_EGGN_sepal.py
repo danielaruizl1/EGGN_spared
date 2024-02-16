@@ -63,7 +63,7 @@ def load_datasets(args, graph_path):
 
 # Initialize wandb
 exp_name = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-wandb.init(project="EGGN_sota", name=exp_name, config=vars(args))
+wandb.init(project="EGGN_sota", name=exp_name, config=vars(args), entity="sepal_v2")
 
 graph_path = f"graphs/{args.dataset}"
 num_genes = dataset_config["top_moran_genes"]
