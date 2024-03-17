@@ -9,6 +9,12 @@ from joblib import Parallel, delayed
 from torchvision.transforms import Compose, Normalize
 from spared.datasets import get_dataset
 
+# Auxiliary function to use booleans in parser
+str2bool = lambda x: (str(x).lower() == 'true')
+str2intlist = lambda x: [int(i) for i in x.split(',')]
+str2floatlist = lambda x: [float(i) for i in x.split(',')]
+str2h_list = lambda x: [str2intlist(i) for i in x.split('//')[1:]]
+
 # Add argparse
 parser = argparse.ArgumentParser(description="Arguments for training EGGN")
 parser.add_argument("--dataset", type=str, required=True, help="Dataset to use")
@@ -20,6 +26,7 @@ parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs")
 parser.add_argument("--max_steps", type=int, default=100, help="Max steps")
 parser.add_argument("--val_interval", type=float, default=0.8, help="Validation interval")
 parser.add_argument("--lr", type=float, default=5e-4, help="Learning rate")
+parser.add_argument('--use_optimal_lr', type=str2bool, default=False, help='Whether or not to use the optimal learning rate in csv for the dataset.')
 parser.add_argument("--verbose_step", type=int, default=10, help="Verbose step")
 parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay")
 parser.add_argument("--mdim", type=int, default=512, help="Dimension of the message")

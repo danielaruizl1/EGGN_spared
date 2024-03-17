@@ -40,7 +40,7 @@ parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs")
 parser.add_argument("--max_steps", type=int, default=1000, help="Max steps")
 parser.add_argument("--val_interval", type=int, default=1, help="Validation interval")
 parser.add_argument("--lr", type=float, default=5e-4, help="Learning rate")
-parser.add_argument('--use_optimal_lr', type=str2bool, default=False, help='Whether or not to use the optimal learning rate in csv for the dataset.')
+parser.add_argument('--use_optimal_lr', type=str2bool, default=True, help='Whether or not to use the optimal learning rate in csv for the dataset.')
 parser.add_argument("--verbose_step", type=int, default=10, help="Verbose step")
 parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay")
 parser.add_argument("--mdim", type=int, default=512, help="Dimension of the message")
@@ -68,9 +68,18 @@ def load_datasets(args, graph_path):
 
     return datasets
 
+# Obtain optimal lr depending on the dataset
+if args.use_optimal_lr:
+    optimal_models_directory_path =  '/media/SSD5/gmmejia/SEPAL/wandb_runs_csv/optimal_models_lr.csv'
+    optimal_lr_df = pd.read_csv(optimal_models_directory_path)
+    optimal_lr_series = optimal_lr_df[optimal_lr_df['Dataset'] == args.dataset]['eggn']
+    optimal_lr = float(optimal_lr_series.iloc[0])
+    args.lr = optimal_lr
+    print(f'Optimal lr for {args.dataset} is {optimal_lr}')
+
 # Initialize wandb
 exp_name = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-wandb.init(project="EGGN_sota", name=exp_name, config=vars(args), entity="sepal_v2")
+wandb.init(project="spared_eggn_sota", name=exp_name, config=vars(args), entity="sepal_v2")
 
 graph_path = f"graphs/{args.dataset}"
 num_genes = dataset_config["top_moran_genes"]
@@ -86,14 +95,6 @@ save_dir = f"results/{args.dataset}"
 print = partial(write,cwd,save_dir + f"/log_{args.dataset}") 
     
 os.makedirs(save_dir, exist_ok= True)
-
-# Obtain optimal lr depending on the dataset
-if args.use_optimal_lr:
-    optimal_models_directory_path =  '/media/SSD4/gmmejia/SEPAL/wandb_runs_csv/optimal_models_lr.csv'
-    optimal_lr_df = pd.read_csv(optimal_models_directory_path)
-    optimal_lr = float(optimal_lr_df[optimal_lr_df['Dataset'] == args.dataset]['eggn'])
-    args.lr = optimal_lr
-    print(f'Optimal lr for {args.dataset} is {optimal_lr}')
 
 datasets = load_datasets(args, graph_path)
 train_loader = torch_geometric.loader.DataLoader(datasets[f"train_{args.dataset}"],batch_size=1)
