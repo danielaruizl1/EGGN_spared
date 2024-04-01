@@ -14,7 +14,7 @@ def run_egn():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default="10xgenomic_human_breast_cancer", help='Dataset name')
     parser.add_argument('--lr', type=float, default=5e-4, help='Learning rate')
-    parser.add_argument('--use_optimal_lr', type=str2bool, default=True, help='Whether or not to use the optimal learning rate in csv for the dataset.')
+    parser.add_argument('--use_optimal_lr', type=str2bool, default=False, help='Whether or not to use the optimal learning rate in csv for the dataset.')
     parser.add_argument('--prediction_layer', type=str, default="c_d_log1p", help='Layer to use for prediction')
     parser.add_argument('--train_config', type=str, default="train_EGGN_config.json", help='Config file path with train hyperparameters')
     args = parser.parse_args()
