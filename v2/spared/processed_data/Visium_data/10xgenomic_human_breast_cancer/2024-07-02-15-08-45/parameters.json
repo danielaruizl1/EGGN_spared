@@ -1,0 +1,30 @@
+{
+    "dataset": "10xgenomic_human_breast_cancer",
+    "hex_geometry": true,
+    "param_dict": {
+        "cell_max_counts": 1000000,
+        "cell_min_counts": 10,
+        "combat_key": "slide_id",
+        "gene_max_counts": 1000000,
+        "gene_min_counts": 10,
+        "min_exp_frac": -1,
+        "min_glob_exp_frac": -1,
+        "plotting_genes": "None",
+        "plotting_slides": "None",
+        "random_samples": -1,
+        "real_data_percentage": 0.7,
+        "top_moran_genes": 128,
+        "wildcard_genes": "None"
+    },
+    "patch_scale": 1.0,
+    "patch_size": 224,
+    "split_names": {
+        "test": [],
+        "train": [
+            "V1_Breast_Cancer_Block_A_Section_1"
+        ],
+        "val": [
+            "V1_Breast_Cancer_Block_A_Section_2"
+        ]
+    }
+}
