@@ -40,7 +40,7 @@ parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs")
 parser.add_argument("--max_steps", type=int, default=1000, help="Max steps")
 parser.add_argument("--val_interval", type=int, default=1, help="Validation interval")
 parser.add_argument("--lr", type=float, default=5e-4, help="Learning rate")
-parser.add_argument('--use_optimal_lr', type=str2bool, default=True, help='Whether or not to use the optimal learning rate in csv for the dataset.')
+parser.add_argument('--use_optimal_lr', type=str2bool, default=False, help='Whether or not to use the optimal learning rate in csv for the dataset.')
 parser.add_argument("--verbose_step", type=int, default=10, help="Verbose step")
 parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay")
 parser.add_argument("--mdim", type=int, default=512, help="Dimension of the message")
@@ -70,10 +70,9 @@ def load_datasets(args, graph_path):
 
 # Obtain optimal lr depending on the dataset
 if args.use_optimal_lr:
-    optimal_models_directory_path =  '/media/SSD5/gmmejia/SEPAL/wandb_runs_csv/optimal_models_lr.csv'
-    optimal_lr_df = pd.read_csv(optimal_models_directory_path)
-    optimal_lr_series = optimal_lr_df[optimal_lr_df['Dataset'] == args.dataset]['eggn']
-    optimal_lr = float(optimal_lr_series.iloc[0])
+    optimal_models_directory_path =  '/home/daruizl/EGGN_sepal/v2/wandb_runs_csv/optimal_lr_eggn_ctlog1p.csv'
+    optimal_lr_df = pd.read_csv(optimal_models_directory_path, sep=";")
+    optimal_lr = float(optimal_lr_df[optimal_lr_df['Dataset'] == args.dataset]['eggn'])
     args.lr = optimal_lr
     print(f'Optimal lr for {args.dataset} is {optimal_lr}')
 
@@ -197,6 +196,12 @@ def get_predictions(model)->None:
 
 # Get global prediction layer 
 get_predictions(model.to(device))
+
+# If noisy layer, change to c_d_log1p for log final artifacts
+if args.prediction_layer == 'noisy':
+    preds = dataset.adata.layers['predictions,noisy']
+    dataset.adata.layers['predictions,c_d_log1p'] = preds
+    del dataset.adata.layers['predictions,noisy']
 
 # Get log final artifacts
 dataset.log_pred_image()

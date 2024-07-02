@@ -20,9 +20,9 @@ def run_egn():
     args = parser.parse_args()
 
     commands = [
-        ['python', 'build_exemplar_sepal.py'],
-        ['python', 'generate_graph_sepal.py'],
-        ['python', 'main_EGGN_sepal.py']
+        ['python', 'build_exemplar_spared.py'],
+        ['python', 'generate_graph_spared.py'],
+        ['python', 'main_EGGN_spared.py']
     ]
 
     # Upload the config file 
