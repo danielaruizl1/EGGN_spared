@@ -1,12 +1,12 @@
 import argparse
 import os
-from model_sepal import HeteroGNN
+from model_spared import HeteroGNN
 import torch.backends.cudnn as cudnn
 import pytorch_lightning as pl
 from functools import partial
 import torch
 import collections
-from train_EGGN_sepal import TrainerModel
+from train_EGGN_spared import TrainerModel
 import glob
 import torch_geometric
 import wandb
@@ -70,7 +70,7 @@ def load_datasets(args, graph_path):
 
 # Obtain optimal lr depending on the dataset
 if args.use_optimal_lr:
-    optimal_models_directory_path =  '/home/daruizl/EGGN_sepal/v2/wandb_runs_csv/optimal_lr_eggn_ctlog1p.csv'
+    optimal_models_directory_path =  'EGGN_spared/v2/wandb_runs_csv/optimal_lr_eggn_ctlog1p.csv'
     optimal_lr_df = pd.read_csv(optimal_models_directory_path, sep=";")
     optimal_lr = float(optimal_lr_df[optimal_lr_df['Dataset'] == args.dataset]['eggn'])
     args.lr = optimal_lr
@@ -78,7 +78,7 @@ if args.use_optimal_lr:
 
 # Initialize wandb
 exp_name = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-wandb.init(project="spared_eggn_sota", name=exp_name, config=vars(args), entity="sepal_v2")
+wandb.init(project="spared_eggn", name=exp_name, config=vars(args), entity="spared")
 
 graph_path = f"graphs/{args.dataset}"
 num_genes = dataset_config["top_moran_genes"]

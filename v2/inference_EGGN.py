@@ -1,9 +1,9 @@
 import argparse
 from spared.datasets import get_dataset
-from main_EGGN_sepal import get_predictions
+from main_EGGN_spared import get_predictions
 import torch
 import pandas as pd
-from model_sepal import HeteroGNN
+from EGGN_sepal.v2.model_spared import HeteroGNN
 import os
 import json
 
