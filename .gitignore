@@ -23,6 +23,4 @@ v2/exemplars/
 v2/graphs/
 v2/optimal_models/
 v2/wandb_runs_csv
-v2/spared/__pycache__/
-v2/spared/data/
-v2/spared/readers/__pycache__/
+v2/spared/

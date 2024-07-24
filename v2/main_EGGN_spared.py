@@ -78,7 +78,7 @@ if args.use_optimal_lr:
 
 # Initialize wandb
 exp_name = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-wandb.init(project="spared_eggn", name=exp_name, config=vars(args), entity="spared")
+wandb.init(project="eggn_spared", name=exp_name, config=vars(args))
 
 graph_path = f"graphs/{args.dataset}"
 num_genes = dataset_config["top_moran_genes"]
