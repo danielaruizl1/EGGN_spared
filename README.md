@@ -1,21 +1,25 @@
-# [Spatial Transcriptomics Analysis of Gene Expression Prediction using Exemplar Guided Graph Neural Network](./doc/eggn.pdf)
-![](doc/coverpage2.jpg)
-
 ## Set up
 
 Run the following to define your environment in terminal:
 
 ```bash
-conda create -n eggn python=3.9.4
-conda activate eggn
-conda install pytorch-lightning=1.5.7 numpy=1.23.3 pandas=1.5.2 tifffile=2021.7.2 pillow=9.3.0 scanpy=1.9.1 -c conda-forge
-
-conda install pytorch torchvision torchaudio pytorch-cuda -c pytorch -c nvidia
-pip install pytorch_lightning==1.5.7
-pip install torch_geometric
-pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.0.0+cu117.html
-pip install -U torch torchaudio --no-cache-dir
+conda create -n eggn_spared
+conda activate eggn_spared
+conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
+conda install lightning -c conda-forge
 pip install 'git+https://github.com/katsura-jp/pytorch-cosine-annealing-with-warmup'
+pip install torch-geometric==2.3.1
+pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.0.0+cu118.html
+pip install squidpy
+pip install wandb
+pip install wget
+pip install combat
+pip install opencv-python
+pip install positional-encodings[pytorch]
+pip install openpyxl
+pip install pyzipper
+pip install plotly
+pip install sh
 pip install timm
 ```
 
