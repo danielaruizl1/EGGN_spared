@@ -21,21 +21,11 @@ pip install pyzipper
 pip install plotly
 pip install sh
 pip install timm
+pip install spared
+
+export PYTHONPATH=/anaconda3/envs/eggn_spared/lib/python3.10/site-packages/spared:$PYTHONPATH
 ```
 
-## Dataset
-
-To use any of the 26 datasets within spared, download our preprocessed data by running:
-```
-wget http://157.253.243.29/SpaRED/processed_data.tar.gz
-```
-
-Please structure the data files as follows.
-```
-└───v2
-    └───spared
-	└───processed_data
-```
 ## Train EGGN
 
 To use a dataset from spared, train eggn by running:
