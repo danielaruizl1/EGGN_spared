@@ -30,13 +30,11 @@ export PYTHONPATH=/anaconda3/envs/eggn_spared/lib/python3.10/site-packages/spare
 
 To use a dataset from spared, train eggn by running:
 ```bash
-cd v2
 python run_main_config.py --dataset spared_dataset_name
 ```
 
 To use a dataset not included in spared, train eggn by running:
 ```bash
-cd v2
 python run_main_config.py --dataset adata_path
 ```
 `adata_path` should be the path to an adata.h5ad
