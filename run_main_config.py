@@ -1,4 +1,4 @@
-from spared.datasets import get_dataset
+from spared.spared_datasets import get_dataset
 from spared.denoising import spackle_cleaner
 import subprocess
 import argparse
@@ -21,6 +21,8 @@ def run_egn():
     parser.add_argument('--use_optimal_lr', type=str2bool, default=False, help='Whether or not to use the optimal learning rate in csv for the dataset.')
     parser.add_argument('--prediction_layer', type=str, default="c_t_log1p", help='Layer to use for prediction')
     parser.add_argument('--train_config', type=str, default="train_EGGN_config.json", help='Config file path with train hyperparameters')
+    parser.add_argument("--train", type=str2bool, default=True, help="Train or load the model")
+    parser.add_argument("--checkpoint_path", type=str, default=None, help="Path to the checkpoint")
     args = parser.parse_args()
 
     use_cuda = torch.cuda.is_available()
@@ -63,6 +65,10 @@ def run_egn():
         for key, value in train_config.items():
             commands[i].append(f'--{key}')
             commands[i].append(f'{value}')
+        commands[i].append(f'--train')
+        commands[i].append(f'{args.train}')
+        commands[i].append(f'--checkpoint_path')
+        commands[i].append(f'{args.checkpoint_path}')
 
     # Call each subprocess
     for command_list in commands:

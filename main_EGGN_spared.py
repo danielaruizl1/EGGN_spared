@@ -13,10 +13,13 @@ import wandb
 from pytorch_lightning.callbacks import ModelCheckpoint
 import json
 from datetime import datetime
-from spared.datasets import get_dataset
+from spared.spared_datasets import get_dataset
 import pandas as pd
 import sys
+from lightning.pytorch import seed_everything
 
+# Set manual seeds and get cuda
+seed_everything(42, workers=True)
 cudnn.benchmark = True
 use_cuda = torch.cuda.is_available()
 
@@ -48,6 +51,8 @@ parser.add_argument("--num_layers", type=int, default=4, help="Number of layers"
 parser.add_argument("--optim_metric", type=str, default="MSE", help="Metric to optimize")
 parser.add_argument("--patches_key", type=str, default="patches_scale_1.0", help="Key of the patches in the dataset")
 parser.add_argument("--graph_radius", type=float, default=1000, help="Graph radius")
+parser.add_argument("--train", type=str2bool, default=True, help="Train or load the model")
+parser.add_argument("--checkpoint_path", type=str, default=None, help="Path to the checkpoint")
 args = parser.parse_args()
 
 spared_path = next((path for path in sys.path if 'spared' in path), None)
@@ -69,10 +74,9 @@ def load_datasets(args, graph_path):
 
     return datasets
 
-# FIXME: Remove the path
 # Obtain optimal lr depending on the dataset
 if args.use_optimal_lr:
-    optimal_models_directory_path =  'EGGN_spared/v2/wandb_runs_csv/optimal_lr_eggn_ctlog1p.csv'
+    optimal_models_directory_path =  'wandb_runs_csv/optimal_lr_eggn_ctlog1p.csv'
     optimal_lr_df = pd.read_csv(optimal_models_directory_path, sep=";")
     optimal_lr = float(optimal_lr_df[optimal_lr_df['Dataset'] == args.dataset]['eggn'])
     args.lr = optimal_lr
@@ -112,9 +116,11 @@ plt = pl.Trainer(num_nodes=1, devices = args.gpus, max_steps = args.max_steps, v
                  check_val_every_n_epoch = None, strategy="ddp",
                  callbacks=[checkpoint_callback], logger = False)
 
-plt.fit(model,train_dataloaders=train_loader,val_dataloaders=val_loader)
-
-checkpoint_path= checkpoint_callback.best_model_path
+if args.train:
+    plt.fit(model,train_dataloaders=train_loader,val_dataloaders=val_loader)
+    checkpoint_path= checkpoint_callback.best_model_path
+else:
+    checkpoint_path = args.checkpoint_path
 
 if f"test_{args.dataset}" in datasets.keys():
     test_loader = torch_geometric.loader.DataLoader(datasets[f"test_{args.dataset}"],batch_size=1)

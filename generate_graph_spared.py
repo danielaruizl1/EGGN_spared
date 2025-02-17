@@ -3,7 +3,7 @@ import torch
 import os
 import torch_geometric
 from tqdm import tqdm
-from spared.datasets import get_dataset
+from spared.spared_datasets import get_dataset
 from spared.dataloaders import get_pretrain_dataloaders
 import argparse
 
@@ -32,6 +32,8 @@ parser.add_argument("--num_layers", type=int, default=4, help="Number of layers"
 parser.add_argument("--optim_metric", type=str, default="MSE", help="Metric to optimize")
 parser.add_argument("--patches_key", type=str, default="patches_scale_1.0", help="Key of the patches in the dataset")
 parser.add_argument("--graph_radius", type=float, default=1000, help="Graph radius")
+parser.add_argument("--train", type=str2bool, default=True, help="Train or load the model")
+parser.add_argument("--checkpoint_path", type=str, default=None, help="Path to the checkpoint")
 args = parser.parse_args()
 
 def get_edge(x,radius):
