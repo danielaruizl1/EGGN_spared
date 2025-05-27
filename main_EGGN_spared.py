@@ -17,6 +17,7 @@ from spared.spared_datasets import get_dataset
 import pandas as pd
 import sys
 from lightning.pytorch import seed_everything
+import numpy as np
 
 # Set manual seeds and get cuda
 seed_everything(42, workers=True)
@@ -53,6 +54,7 @@ parser.add_argument("--patches_key", type=str, default="patches_scale_1.0", help
 parser.add_argument("--graph_radius", type=float, default=1000, help="Graph radius")
 parser.add_argument("--train", type=str2bool, default=True, help="Train or load the model")
 parser.add_argument("--checkpoint_path", type=str, default=None, help="Path to the checkpoint")
+parser.add_argument("--original_index", type=str2bool, default=False, help="Whether to use the original index")
 args = parser.parse_args()
 
 spared_path = next((path for path in sys.path if 'spared' in path), None)
@@ -146,6 +148,8 @@ model.load_state_dict(checkpoint['state_dict'])
 
 # Get dataset from the values defined in args
 dataset = get_dataset(args.dataset, visualize=False)
+if args.original_index:
+    dataset.adata = dataset.adata[:, np.argsort(dataset.adata.var['original_index'].astype(int))].copy()
 
 def get_predictions(model)->None:
     

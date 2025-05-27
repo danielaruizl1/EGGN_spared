@@ -37,6 +37,7 @@ parser.add_argument("--patches_key", type=str, default="patches_scale_1.0", help
 parser.add_argument("--graph_radius", type=float, default=1000, help="Graph radius")
 parser.add_argument("--train", type=str2bool, default=True, help="Train or load the model")
 parser.add_argument("--checkpoint_path", type=str, default=None, help="Path to the checkpoint")
+parser.add_argument("--original_index", type=str2bool, default=False, help="Whether to use the original index")
 args = parser.parse_args()
 
 use_cuda = torch.cuda.is_available()
@@ -44,6 +45,8 @@ device = torch.device("cuda" if use_cuda else "cpu")
 
 # Get dataset according to the dataset name passed in args
 dataset = get_dataset(args.dataset, visualize=False)
+if args.original_index:
+    dataset.adata = dataset.adata[:, np.argsort(dataset.adata.var['original_index'].astype(int))].copy()
 
 # Declare data loaders
 train_dl, val_dl, test_dl = get_pretrain_dataloaders(dataset.adata, layer=args.prediction_layer, 
